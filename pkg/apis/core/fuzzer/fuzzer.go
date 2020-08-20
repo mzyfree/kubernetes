@@ -133,14 +133,14 @@ var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
 			q.Limits = make(core.ResourceList)
 			q.Requests = make(core.ResourceList)
 			cpuLimit := randomQuantity()
-			q.Limits[core.ResourceCPU] = *cpuLimit.Copy()
-			q.Requests[core.ResourceCPU] = *cpuLimit.Copy()
+			q.Limits[core.ResourceCPU] = cpuLimit.DeepCopy()
+			q.Requests[core.ResourceCPU] = cpuLimit.DeepCopy()
 			memoryLimit := randomQuantity()
-			q.Limits[core.ResourceMemory] = *memoryLimit.Copy()
-			q.Requests[core.ResourceMemory] = *memoryLimit.Copy()
+			q.Limits[core.ResourceMemory] = memoryLimit.DeepCopy()
+			q.Requests[core.ResourceMemory] = memoryLimit.DeepCopy()
 			storageLimit := randomQuantity()
-			q.Limits[core.ResourceStorage] = *storageLimit.Copy()
-			q.Requests[core.ResourceStorage] = *storageLimit.Copy()
+			q.Limits[core.ResourceStorage] = storageLimit.DeepCopy()
+			q.Requests[core.ResourceStorage] = storageLimit.DeepCopy()
 		},
 		func(q *core.LimitRangeItem, c fuzz.Continue) {
 			var cpuLimit resource.Quantity
@@ -148,16 +148,16 @@ var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
 
 			q.Type = core.LimitTypeContainer
 			q.Default = make(core.ResourceList)
-			q.Default[core.ResourceCPU] = *(cpuLimit.Copy())
+			q.Default[core.ResourceCPU] = cpuLimit.DeepCopy()
 
 			q.DefaultRequest = make(core.ResourceList)
-			q.DefaultRequest[core.ResourceCPU] = *(cpuLimit.Copy())
+			q.DefaultRequest[core.ResourceCPU] = cpuLimit.DeepCopy()
 
 			q.Max = make(core.ResourceList)
-			q.Max[core.ResourceCPU] = *(cpuLimit.Copy())
+			q.Max[core.ResourceCPU] = cpuLimit.DeepCopy()
 
 			q.Min = make(core.ResourceList)
-			q.Min[core.ResourceCPU] = *(cpuLimit.Copy())
+			q.Min[core.ResourceCPU] = cpuLimit.DeepCopy()
 
 			q.MaxLimitRequestRatio = make(core.ResourceList)
 			q.MaxLimitRequestRatio[core.ResourceCPU] = resource.MustParse("10")
@@ -263,6 +263,14 @@ var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
 				i.ISCSIInterface = "default"
 			}
 		},
+		func(i *core.PersistentVolumeClaimSpec, c fuzz.Continue) {
+			// Match defaulting in pkg/apis/core/v1/defaults.go.
+			volumeMode := core.PersistentVolumeMode(c.RandString())
+			if volumeMode == "" {
+				volumeMode = core.PersistentVolumeFilesystem
+			}
+			i.VolumeMode = &volumeMode
+		},
 		func(d *core.DNSPolicy, c fuzz.Continue) {
 			policies := []core.DNSPolicy{core.DNSClusterFirst, core.DNSDefault}
 			*d = policies[c.Rand.Intn(len(policies))]
@@ -278,6 +286,11 @@ var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
 		func(p *core.ServiceType, c fuzz.Continue) {
 			types := []core.ServiceType{core.ServiceTypeClusterIP, core.ServiceTypeNodePort, core.ServiceTypeLoadBalancer}
 			*p = types[c.Rand.Intn(len(types))]
+		},
+		func(p *core.IPFamily, c fuzz.Continue) {
+			types := []core.IPFamily{core.IPv4Protocol, core.IPv6Protocol}
+			selected := types[c.Rand.Intn(len(types))]
+			*p = selected
 		},
 		func(p *core.ServiceExternalTrafficPolicyType, c fuzz.Continue) {
 			types := []core.ServiceExternalTrafficPolicyType{core.ServiceExternalTrafficPolicyTypeCluster, core.ServiceExternalTrafficPolicyTypeLocal}

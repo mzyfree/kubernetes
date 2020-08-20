@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e_node
+package e2enode
 
 import (
 	"time"
@@ -27,6 +27,7 @@ import (
 	kubelogs "k8s.io/kubernetes/pkg/kubelet/logs"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -45,7 +46,7 @@ var _ = framework.KubeDescribe("ContainerLogRotation [Slow] [Serial] [Disruptive
 	ginkgo.Context("when a container generates a lot of log", func() {
 		ginkgo.BeforeEach(func() {
 			if framework.TestContext.ContainerRuntime != kubetypes.RemoteContainerRuntime {
-				framework.Skipf("Skipping ContainerLogRotation test since the container runtime is not remote")
+				e2eskipper.Skipf("Skipping ContainerLogRotation test since the container runtime is not remote")
 			}
 		})
 
@@ -79,7 +80,7 @@ var _ = framework.KubeDescribe("ContainerLogRotation [Slow] [Serial] [Disruptive
 			}
 			pod = f.PodClient().CreateSync(pod)
 			ginkgo.By("get container log path")
-			gomega.Expect(len(pod.Status.ContainerStatuses)).To(gomega.Equal(1))
+			framework.ExpectEqual(len(pod.Status.ContainerStatuses), 1)
 			id := kubecontainer.ParseContainerID(pod.Status.ContainerStatuses[0].ContainerID).ID
 			r, _, err := getCRIClient()
 			framework.ExpectNoError(err)

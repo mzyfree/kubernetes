@@ -25,6 +25,7 @@ limitations under the License.
 package alwayspullimages
 
 import (
+	"context"
 	"io"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -55,7 +56,7 @@ var _ admission.MutationInterface = &AlwaysPullImages{}
 var _ admission.ValidationInterface = &AlwaysPullImages{}
 
 // Admit makes an admission decision based on the request attributes
-func (a *AlwaysPullImages) Admit(attributes admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (a *AlwaysPullImages) Admit(ctx context.Context, attributes admission.Attributes, o admission.ObjectInterfaces) (err error) {
 	// Ignore all calls to subresources or resources other than pods.
 	if shouldIgnore(attributes) {
 		return nil
@@ -65,7 +66,7 @@ func (a *AlwaysPullImages) Admit(attributes admission.Attributes, o admission.Ob
 		return apierrors.NewBadRequest("Resource was marked with kind Pod but was unable to be converted")
 	}
 
-	pods.VisitContainersWithPath(&pod.Spec, func(c *api.Container, _ *field.Path) bool {
+	pods.VisitContainersWithPath(&pod.Spec, field.NewPath("spec"), func(c *api.Container, _ *field.Path) bool {
 		c.ImagePullPolicy = api.PullAlways
 		return true
 	})
@@ -74,7 +75,7 @@ func (a *AlwaysPullImages) Admit(attributes admission.Attributes, o admission.Ob
 }
 
 // Validate makes sure that all containers are set to always pull images
-func (*AlwaysPullImages) Validate(attributes admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (*AlwaysPullImages) Validate(ctx context.Context, attributes admission.Attributes, o admission.ObjectInterfaces) (err error) {
 	if shouldIgnore(attributes) {
 		return nil
 	}
@@ -85,7 +86,7 @@ func (*AlwaysPullImages) Validate(attributes admission.Attributes, o admission.O
 	}
 
 	var allErrs []error
-	pods.VisitContainersWithPath(&pod.Spec, func(c *api.Container, p *field.Path) bool {
+	pods.VisitContainersWithPath(&pod.Spec, field.NewPath("spec"), func(c *api.Container, p *field.Path) bool {
 		if c.ImagePullPolicy != api.PullAlways {
 			allErrs = append(allErrs, admission.NewForbidden(attributes,
 				field.NotSupported(p.Child("imagePullPolicy"), c.ImagePullPolicy, []string{string(api.PullAlways)}),

@@ -35,10 +35,11 @@ type REST struct {
 }
 
 // NewREST returns a RESTStorage object that will work with ConfigMap objects.
-func NewREST(optsGetter generic.RESTOptionsGetter) *REST {
+func NewREST(optsGetter generic.RESTOptionsGetter) (*REST, error) {
 	store := &genericregistry.Store{
 		NewFunc:                  func() runtime.Object { return &api.ConfigMap{} },
 		NewListFunc:              func() runtime.Object { return &api.ConfigMapList{} },
+		PredicateFunc:            configmap.Matcher,
 		DefaultQualifiedResource: api.Resource("configmaps"),
 
 		CreateStrategy: configmap.Strategy,
@@ -53,9 +54,9 @@ func NewREST(optsGetter generic.RESTOptionsGetter) *REST {
 		TriggerFunc: map[string]storage.IndexerFunc{"metadata.name": configmap.NameTriggerFunc},
 	}
 	if err := store.CompleteWithOptions(options); err != nil {
-		panic(err) // TODO: Propagate error up
+		return nil, err
 	}
-	return &REST{store}
+	return &REST{store}, nil
 }
 
 // Implement ShortNamesProvider

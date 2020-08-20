@@ -39,6 +39,8 @@ func NewControlPlane() workflow.Phase {
 			options.KubeconfigPath,
 			options.CertificateRenewal,
 			options.EtcdUpgrade,
+			options.Kustomize,
+			options.Patches,
 		},
 	}
 	return phase
@@ -53,7 +55,7 @@ func runControlPlane() func(c workflow.RunData) error {
 
 		// if this is not a control-plane node, this phase should not be executed
 		if !data.IsControlPlaneNode() {
-			fmt.Printf("[upgrade] Skipping phase. Not a control plane node")
+			fmt.Println("[upgrade] Skipping phase. Not a control plane node.")
 			return nil
 		}
 
@@ -63,16 +65,18 @@ func runControlPlane() func(c workflow.RunData) error {
 		dryRun := data.DryRun()
 		etcdUpgrade := data.EtcdUpgrade()
 		renewCerts := data.RenewCerts()
+		kustomizeDir := data.KustomizeDir()
+		patchesDir := data.PatchesDir()
 
 		// Upgrade the control plane and etcd if installed on this node
 		fmt.Printf("[upgrade] Upgrading your Static Pod-hosted control plane instance to version %q...\n", cfg.KubernetesVersion)
 		if dryRun {
-			return upgrade.DryRunStaticPodUpgrade(cfg)
+			return upgrade.DryRunStaticPodUpgrade(kustomizeDir, patchesDir, cfg)
 		}
 
 		waiter := apiclient.NewKubeWaiter(data.Client(), upgrade.UpgradeManifestTimeout, os.Stdout)
 
-		if err := upgrade.PerformStaticPodUpgrade(client, waiter, cfg, etcdUpgrade, renewCerts); err != nil {
+		if err := upgrade.PerformStaticPodUpgrade(client, waiter, cfg, etcdUpgrade, renewCerts, kustomizeDir, patchesDir); err != nil {
 			return errors.Wrap(err, "couldn't complete the static pod upgrade")
 		}
 

@@ -2,27 +2,33 @@
 
 module k8s.io/component-base
 
-go 1.12
+go 1.15
 
 require (
 	github.com/blang/semver v3.5.0+incompatible
-	github.com/prometheus/client_golang v0.9.2
-	github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910
-	github.com/prometheus/common v0.0.0-20181126121408-4724e9255275
-	github.com/prometheus/procfs v0.0.0-20181204211112-1dc9a6cbc91a
-	github.com/spf13/pflag v1.0.3
-	github.com/stretchr/testify v1.3.0
+	github.com/go-logr/logr v0.2.0
+	github.com/google/go-cmp v0.4.0
+	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
+	github.com/moby/term v0.0.0-20200312100748-672ec06f55cd
+	github.com/prometheus/client_golang v1.7.1
+	github.com/prometheus/client_model v0.2.0
+	github.com/prometheus/common v0.10.0
+	github.com/prometheus/procfs v0.1.3
+	github.com/sirupsen/logrus v1.6.0 // indirect
+	github.com/spf13/pflag v1.0.5
+	github.com/stretchr/testify v1.4.0
+	go.uber.org/atomic v1.4.0 // indirect
+	go.uber.org/multierr v1.1.0 // indirect
+	go.uber.org/zap v1.10.0
 	k8s.io/apimachinery v0.0.0
-	k8s.io/klog v0.3.1
-	k8s.io/utils v0.0.0-20190607212802-c55fbcfc754a
+	k8s.io/client-go v0.0.0
+	k8s.io/klog/v2 v2.2.0
+	k8s.io/utils v0.0.0-20200729134348-d5654de09c73
 )
 
 replace (
-	golang.org/x/net => golang.org/x/net v0.0.0-20190206173232-65e2d4e15006
-	golang.org/x/sync => golang.org/x/sync v0.0.0-20181108010431-42b317875d0f
-	golang.org/x/sys => golang.org/x/sys v0.0.0-20190209173611-3b5209105503
-	golang.org/x/text => golang.org/x/text v0.3.1-0.20181227161524-e6919f6577db
-	golang.org/x/tools => golang.org/x/tools v0.0.0-20190313210603-aa82965741a9
+	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
+	k8s.io/client-go => ../client-go
 	k8s.io/component-base => ../component-base
 )

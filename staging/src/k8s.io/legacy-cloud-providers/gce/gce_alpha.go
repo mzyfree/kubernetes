@@ -1,3 +1,5 @@
+// +build !providerless
+
 /*
 Copyright 2017 The Kubernetes Authors.
 
@@ -16,19 +18,13 @@ limitations under the License.
 
 package gce
 
-import (
-	"fmt"
-)
-
 const (
-	// AlphaFeatureNetworkTiers allows Services backed by a GCP load balancer to choose
-	// what network tier to use. Currently supports "Standard" and "Premium" (default).
-	//
-	// alpha: v1.8 (for Services)
-	AlphaFeatureNetworkTiers = "NetworkTiers"
 	// AlphaFeatureILBSubsets allows InternalLoadBalancer services to include a subset
 	// of cluster nodes as backends instead of all nodes.
 	AlphaFeatureILBSubsets = "ILBSubsets"
+	// AlphaFeatureILBCustomSubnet allows InternalLoadBalancer services to specify a
+	// network subnet to allocate ip addresses from.
+	AlphaFeatureILBCustomSubnet = "ILBCustomSubnet"
 )
 
 // AlphaFeatureGate contains a mapping of alpha features to whether they are enabled
@@ -51,11 +47,4 @@ func NewAlphaFeatureGate(features []string) *AlphaFeatureGate {
 		featureMap[name] = true
 	}
 	return &AlphaFeatureGate{featureMap}
-}
-
-func (g *Cloud) alphaFeatureEnabled(feature string) error {
-	if !g.AlphaFeatureGate.Enabled(feature) {
-		return fmt.Errorf("alpha feature %q is not enabled", feature)
-	}
-	return nil
 }

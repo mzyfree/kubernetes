@@ -26,7 +26,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/pkg/kubelet/stats/pidlimit"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
@@ -38,10 +38,17 @@ const (
 
 //createNodeAllocatableCgroups creates Node Allocatable Cgroup when CgroupsPerQOS flag is specified as true
 func (cm *containerManagerImpl) createNodeAllocatableCgroups() error {
+	nodeAllocatable := cm.internalCapacity
+	// Use Node Allocatable limits instead of capacity if the user requested enforcing node allocatable.
+	nc := cm.NodeConfig.NodeAllocatableConfig
+	if cm.CgroupsPerQOS && nc.EnforceNodeAllocatable.Has(kubetypes.NodeAllocatableEnforcementKey) {
+		nodeAllocatable = cm.getNodeAllocatableInternalAbsolute()
+	}
+
 	cgroupConfig := &CgroupConfig{
 		Name: cm.cgroupRoot,
 		// The default limits for cpu shares can be very low which can lead to CPU starvation for pods.
-		ResourceParameters: getCgroupConfig(cm.internalCapacity),
+		ResourceParameters: getCgroupConfig(nodeAllocatable),
 	}
 	if cm.cgroupManager.Exists(cgroupConfig.Name) {
 		return nil
@@ -177,7 +184,7 @@ func (cm *containerManagerImpl) getNodeAllocatableAbsolute() v1.ResourceList {
 func (cm *containerManagerImpl) getNodeAllocatableAbsoluteImpl(capacity v1.ResourceList) v1.ResourceList {
 	result := make(v1.ResourceList)
 	for k, v := range capacity {
-		value := *(v.Copy())
+		value := v.DeepCopy()
 		if cm.NodeConfig.SystemReserved != nil {
 			value.Sub(cm.NodeConfig.SystemReserved[k])
 		}
@@ -237,7 +244,7 @@ func (cm *containerManagerImpl) validateNodeAllocatable() error {
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("Invalid Node Allocatable configuration. %s", strings.Join(errors, " "))
+		return fmt.Errorf("invalid Node Allocatable configuration. %s", strings.Join(errors, " "))
 	}
 	return nil
 }

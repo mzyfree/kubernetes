@@ -14,6 +14,7 @@ metadata:
     "7": "8"
   managedFields:
   - apiVersion: "17"
+    fieldsType: "18"
     manager: "16"
     operation: 鐊唊飙Ş-U圴÷a/ɔ}摁(湗Ć]
   name: "2"
@@ -30,4 +31,8 @@ metadata:
   uid: "7"
 spec:
   attachRequired: false
+  fsGroupPolicy: /ʕVŚ(ĿȊ甞谐颋ǅSǡ
   podInfoOnMount: false
+  storageCapacity: true
+  volumeLifecycleModes:
+  - r鯹)晿<o,c鮽ort昍řČ扷5ƗǸ

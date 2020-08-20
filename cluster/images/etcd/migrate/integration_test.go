@@ -25,6 +25,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -37,13 +38,21 @@ import (
 	"time"
 
 	"github.com/blang/semver"
+	"k8s.io/klog/v2"
 )
 
 var (
-	testSupportedVersions = MustParseSupportedVersions("3.0.17, 3.1.12")
+	testSupportedVersions = MustParseSupportedVersions([]string{"3.0.17", "3.1.12"})
 	testVersionPrevious   = &EtcdVersion{semver.MustParse("3.0.17")}
 	testVersionLatest     = &EtcdVersion{semver.MustParse("3.1.12")}
 )
+
+func init() {
+	// Enable klog which is used in dependencies
+	klog.InitFlags(nil)
+	flag.Set("logtostderr", "true")
+	flag.Set("v", "9")
+}
 
 func TestMigrate(t *testing.T) {
 	migrations := []struct {

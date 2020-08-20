@@ -42,6 +42,9 @@ func getControlPlaneJoinPhaseFlags(name string) []string {
 		options.ControlPlane,
 		options.NodeName,
 	}
+	if name == "etcd" {
+		flags = append(flags, options.Kustomize, options.Patches)
+	}
 	if name != "mark-control-plane" {
 		flags = append(flags, options.APIServerAdvertiseAddress)
 	}
@@ -136,8 +139,9 @@ func runEtcdPhase(c workflow.RunData) error {
 	// From https://coreos.com/etcd/docs/latest/v2/runtime-configuration.html
 	// "If you add a new member to a 1-node cluster, the cluster cannot make progress before the new member starts
 	// because it needs two members as majority to agree on the consensus. You will only see this behavior between the time
-	// etcdctl member add informs the cluster about the new member and the new member successfully establishing a connection to the 	// existing one."
-	if err := etcdphase.CreateStackedEtcdStaticPodManifestFile(client, kubeadmconstants.GetStaticPodDirectory(), cfg.NodeRegistration.Name, &cfg.ClusterConfiguration, &cfg.LocalAPIEndpoint); err != nil {
+	// etcdctl member add informs the cluster about the new member and the new member successfully establishing a connection to the
+	// existing one."
+	if err := etcdphase.CreateStackedEtcdStaticPodManifestFile(client, kubeadmconstants.GetStaticPodDirectory(), data.KustomizeDir(), data.PatchesDir(), cfg.NodeRegistration.Name, &cfg.ClusterConfiguration, &cfg.LocalAPIEndpoint); err != nil {
 		return errors.Wrap(err, "error creating local etcd static pod manifest file")
 	}
 

@@ -114,6 +114,12 @@ func SetObjectDefaults_EphemeralContainers(in *v1.EphemeralContainers) {
 				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet)
 			}
 		}
+		if a.EphemeralContainerCommon.StartupProbe != nil {
+			SetDefaults_Probe(a.EphemeralContainerCommon.StartupProbe)
+			if a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet)
+			}
+		}
 		if a.EphemeralContainerCommon.Lifecycle != nil {
 			if a.EphemeralContainerCommon.Lifecycle.PostStart != nil {
 				if a.EphemeralContainerCommon.Lifecycle.PostStart.HTTPGet != nil {
@@ -194,6 +200,7 @@ func SetObjectDefaults_PersistentVolume(in *v1.PersistentVolume) {
 
 func SetObjectDefaults_PersistentVolumeClaim(in *v1.PersistentVolumeClaim) {
 	SetDefaults_PersistentVolumeClaim(in)
+	SetDefaults_PersistentVolumeClaimSpec(&in.Spec)
 	SetDefaults_ResourceList(&in.Spec.Resources.Limits)
 	SetDefaults_ResourceList(&in.Spec.Resources.Requests)
 	SetDefaults_ResourceList(&in.Status.Capacity)
@@ -266,6 +273,13 @@ func SetObjectDefaults_Pod(in *v1.Pod) {
 		if a.VolumeSource.ScaleIO != nil {
 			SetDefaults_ScaleIOVolumeSource(a.VolumeSource.ScaleIO)
 		}
+		if a.VolumeSource.Ephemeral != nil {
+			if a.VolumeSource.Ephemeral.VolumeClaimTemplate != nil {
+				SetDefaults_PersistentVolumeClaimSpec(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec)
+				SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Limits)
+				SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests)
+			}
+		}
 	}
 	for i := range in.Spec.InitContainers {
 		a := &in.Spec.InitContainers[i]
@@ -294,6 +308,12 @@ func SetObjectDefaults_Pod(in *v1.Pod) {
 			SetDefaults_Probe(a.ReadinessProbe)
 			if a.ReadinessProbe.Handler.HTTPGet != nil {
 				SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
+			}
+		}
+		if a.StartupProbe != nil {
+			SetDefaults_Probe(a.StartupProbe)
+			if a.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
 			}
 		}
 		if a.Lifecycle != nil {
@@ -338,6 +358,12 @@ func SetObjectDefaults_Pod(in *v1.Pod) {
 				SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
 			}
 		}
+		if a.StartupProbe != nil {
+			SetDefaults_Probe(a.StartupProbe)
+			if a.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
+			}
+		}
 		if a.Lifecycle != nil {
 			if a.Lifecycle.PostStart != nil {
 				if a.Lifecycle.PostStart.HTTPGet != nil {
@@ -377,6 +403,12 @@ func SetObjectDefaults_Pod(in *v1.Pod) {
 			SetDefaults_Probe(a.EphemeralContainerCommon.ReadinessProbe)
 			if a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet != nil {
 				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet)
+			}
+		}
+		if a.EphemeralContainerCommon.StartupProbe != nil {
+			SetDefaults_Probe(a.EphemeralContainerCommon.StartupProbe)
+			if a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet)
 			}
 		}
 		if a.EphemeralContainerCommon.Lifecycle != nil {
@@ -454,6 +486,13 @@ func SetObjectDefaults_PodTemplate(in *v1.PodTemplate) {
 		if a.VolumeSource.ScaleIO != nil {
 			SetDefaults_ScaleIOVolumeSource(a.VolumeSource.ScaleIO)
 		}
+		if a.VolumeSource.Ephemeral != nil {
+			if a.VolumeSource.Ephemeral.VolumeClaimTemplate != nil {
+				SetDefaults_PersistentVolumeClaimSpec(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec)
+				SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Limits)
+				SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests)
+			}
+		}
 	}
 	for i := range in.Template.Spec.InitContainers {
 		a := &in.Template.Spec.InitContainers[i]
@@ -482,6 +521,12 @@ func SetObjectDefaults_PodTemplate(in *v1.PodTemplate) {
 			SetDefaults_Probe(a.ReadinessProbe)
 			if a.ReadinessProbe.Handler.HTTPGet != nil {
 				SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
+			}
+		}
+		if a.StartupProbe != nil {
+			SetDefaults_Probe(a.StartupProbe)
+			if a.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
 			}
 		}
 		if a.Lifecycle != nil {
@@ -526,6 +571,12 @@ func SetObjectDefaults_PodTemplate(in *v1.PodTemplate) {
 				SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
 			}
 		}
+		if a.StartupProbe != nil {
+			SetDefaults_Probe(a.StartupProbe)
+			if a.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
+			}
+		}
 		if a.Lifecycle != nil {
 			if a.Lifecycle.PostStart != nil {
 				if a.Lifecycle.PostStart.HTTPGet != nil {
@@ -565,6 +616,12 @@ func SetObjectDefaults_PodTemplate(in *v1.PodTemplate) {
 			SetDefaults_Probe(a.EphemeralContainerCommon.ReadinessProbe)
 			if a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet != nil {
 				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet)
+			}
+		}
+		if a.EphemeralContainerCommon.StartupProbe != nil {
+			SetDefaults_Probe(a.EphemeralContainerCommon.StartupProbe)
+			if a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet != nil {
+				SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet)
 			}
 		}
 		if a.EphemeralContainerCommon.Lifecycle != nil {
@@ -644,6 +701,13 @@ func SetObjectDefaults_ReplicationController(in *v1.ReplicationController) {
 			if a.VolumeSource.ScaleIO != nil {
 				SetDefaults_ScaleIOVolumeSource(a.VolumeSource.ScaleIO)
 			}
+			if a.VolumeSource.Ephemeral != nil {
+				if a.VolumeSource.Ephemeral.VolumeClaimTemplate != nil {
+					SetDefaults_PersistentVolumeClaimSpec(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec)
+					SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Limits)
+					SetDefaults_ResourceList(&a.VolumeSource.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests)
+				}
+			}
 		}
 		for i := range in.Spec.Template.Spec.InitContainers {
 			a := &in.Spec.Template.Spec.InitContainers[i]
@@ -672,6 +736,12 @@ func SetObjectDefaults_ReplicationController(in *v1.ReplicationController) {
 				SetDefaults_Probe(a.ReadinessProbe)
 				if a.ReadinessProbe.Handler.HTTPGet != nil {
 					SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
+				}
+			}
+			if a.StartupProbe != nil {
+				SetDefaults_Probe(a.StartupProbe)
+				if a.StartupProbe.Handler.HTTPGet != nil {
+					SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
 				}
 			}
 			if a.Lifecycle != nil {
@@ -716,6 +786,12 @@ func SetObjectDefaults_ReplicationController(in *v1.ReplicationController) {
 					SetDefaults_HTTPGetAction(a.ReadinessProbe.Handler.HTTPGet)
 				}
 			}
+			if a.StartupProbe != nil {
+				SetDefaults_Probe(a.StartupProbe)
+				if a.StartupProbe.Handler.HTTPGet != nil {
+					SetDefaults_HTTPGetAction(a.StartupProbe.Handler.HTTPGet)
+				}
+			}
 			if a.Lifecycle != nil {
 				if a.Lifecycle.PostStart != nil {
 					if a.Lifecycle.PostStart.HTTPGet != nil {
@@ -755,6 +831,12 @@ func SetObjectDefaults_ReplicationController(in *v1.ReplicationController) {
 				SetDefaults_Probe(a.EphemeralContainerCommon.ReadinessProbe)
 				if a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet != nil {
 					SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.ReadinessProbe.Handler.HTTPGet)
+				}
+			}
+			if a.EphemeralContainerCommon.StartupProbe != nil {
+				SetDefaults_Probe(a.EphemeralContainerCommon.StartupProbe)
+				if a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet != nil {
+					SetDefaults_HTTPGetAction(a.EphemeralContainerCommon.StartupProbe.Handler.HTTPGet)
 				}
 			}
 			if a.EphemeralContainerCommon.Lifecycle != nil {

@@ -1,3 +1,5 @@
+// +build !providerless
+
 /*
 Copyright 2016 The Kubernetes Authors.
 
@@ -26,6 +28,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -46,7 +49,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	nodehelpers "k8s.io/cloud-provider/node/helpers"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"k8s.io/legacy-cloud-providers/vsphere/vclib"
 	"k8s.io/legacy-cloud-providers/vsphere/vclib/diskmanagers"
@@ -96,6 +99,7 @@ type VSphere struct {
 	nodeManager          *NodeManager
 	vmUUID               string
 	isSecretInfoProvided bool
+	isSecretManaged      bool
 }
 
 // Represents a vSphere instance where one or more kubernetes nodes are running.
@@ -173,6 +177,8 @@ type VSphereConfig struct {
 		SecretName string `gcfg:"secret-name"`
 		// Secret Namespace where secret will be present that has vCenter credentials.
 		SecretNamespace string `gcfg:"secret-namespace"`
+		// Secret changes being ingnored for cloud resources
+		SecretNotManaged bool `gcfg:"secret-not-managed"`
 	}
 
 	VirtualCenter map[string]*VirtualCenterConfig
@@ -273,6 +279,15 @@ func (vs *VSphere) SetInformers(informerFactory informers.SharedInformerFactory)
 			Cache: &SecretCache{
 				VirtualCenter: make(map[string]*Credential),
 			},
+		}
+		if vs.isSecretManaged {
+			klog.V(4).Infof("Setting up secret informers for vSphere Cloud Provider")
+			secretInformer := informerFactory.Core().V1().Secrets().Informer()
+			secretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+				AddFunc:    vs.SecretAdded,
+				UpdateFunc: vs.SecretUpdated,
+			})
+			klog.V(4).Infof("Secret informers in vSphere cloud provider initialized")
 		}
 		vs.nodeManager.UpdateCredentialManager(secretCredentialManager)
 	}
@@ -528,6 +543,7 @@ func buildVSphereFromConfig(cfg VSphereConfig) (*VSphere, error) {
 			registeredNodes:    make(map[string]*v1.Node),
 		},
 		isSecretInfoProvided: isSecretInfoProvided,
+		isSecretManaged:      !cfg.Global.SecretNotManaged,
 		cfg:                  &cfg,
 	}
 	return &vs, nil
@@ -542,6 +558,12 @@ func logout(vs *VSphere) {
 // Instances returns an implementation of Instances for vSphere.
 func (vs *VSphere) Instances() (cloudprovider.Instances, bool) {
 	return vs, true
+}
+
+// InstancesV2 returns an implementation of InstancesV2 for vSphere.
+// TODO: implement ONLY for external cloud provider
+func (vs *VSphere) InstancesV2() (cloudprovider.InstancesV2, bool) {
+	return nil, false
 }
 
 func getLocalIP() ([]v1.NodeAddress, error) {
@@ -570,7 +592,7 @@ func getLocalIP() ([]v1.NodeAddress, error) {
 		} else {
 			for _, addr := range localAddrs {
 				if ipnet, ok := addr.(*net.IPNet); ok {
-					if ipnet.IP.To4() != nil {
+					if !ipnet.IP.IsLinkLocalUnicast() {
 						// Filter external IP by MAC address OUIs from vCenter and from ESX
 						vmMACAddr := strings.ToLower(i.HardwareAddr.String())
 						// Making sure that the MAC address is long enough
@@ -637,17 +659,25 @@ func (vs *VSphere) getVMFromNodeName(ctx context.Context, nodeName k8stypes.Node
 
 // NodeAddresses is an implementation of Instances.NodeAddresses.
 func (vs *VSphere) NodeAddresses(ctx context.Context, nodeName k8stypes.NodeName) ([]v1.NodeAddress, error) {
-	// Get local IP addresses if node is local node
 	if vs.hostName == convertToString(nodeName) {
-		addrs, err := getLocalIP()
-		if err != nil {
-			return nil, err
-		}
-		// add the hostname address
-		nodehelpers.AddToNodeAddresses(&addrs, v1.NodeAddress{Type: v1.NodeHostName, Address: vs.hostName})
-		return addrs, nil
+		return vs.getNodeAddressesFromLocalIP()
 	}
+	return vs.getNodeAddressesFromVM(ctx, nodeName)
+}
 
+// getNodeAddressesFromLocalIP get local IP addresses if node is local node.
+func (vs *VSphere) getNodeAddressesFromLocalIP() ([]v1.NodeAddress, error) {
+	addrs, err := getLocalIP()
+	if err != nil {
+		return nil, err
+	}
+	// add the hostname address
+	nodehelpers.AddToNodeAddresses(&addrs, v1.NodeAddress{Type: v1.NodeHostName, Address: vs.hostName})
+	return addrs, nil
+}
+
+// getNodeAddressesFromVM get vm IP addresses if node is vm.
+func (vs *VSphere) getNodeAddressesFromVM(ctx context.Context, nodeName k8stypes.NodeName) ([]v1.NodeAddress, error) {
 	if vs.cfg == nil {
 		return nil, cloudprovider.InstanceNotFound
 	}
@@ -655,7 +685,7 @@ func (vs *VSphere) NodeAddresses(ctx context.Context, nodeName k8stypes.NodeName
 	// Below logic can be executed only on master as VC details are present.
 	addrs := []v1.NodeAddress{}
 	// Create context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	vsi, err := vs.getVSphereInstance(nodeName)
 	if err != nil {
@@ -681,7 +711,7 @@ func (vs *VSphere) NodeAddresses(ctx context.Context, nodeName k8stypes.NodeName
 	for _, v := range vmMoList[0].Guest.Net {
 		if vs.cfg.Network.PublicNetwork == v.Network {
 			for _, ip := range v.IpAddress {
-				if net.ParseIP(ip).To4() != nil {
+				if !net.ParseIP(ip).IsLinkLocalUnicast() {
 					nodehelpers.AddToNodeAddresses(&addrs,
 						v1.NodeAddress{
 							Type:    v1.NodeExternalIP,
@@ -1069,11 +1099,11 @@ func (vs *VSphere) DisksAreAttached(nodeVolumes map[k8stypes.NodeName][]string) 
 				dcNodes[VC_DC] = append(dcNodes[VC_DC], nodeName)
 			}
 
-			for _, nodes := range dcNodes {
+			for _, nodeNames := range dcNodes {
 				localAttachedMap := make(map[string]map[string]bool)
 				localAttachedMaps = append(localAttachedMaps, localAttachedMap)
 				// Start go routines per VC-DC to check disks are attached
-				go func() {
+				go func(nodes []k8stypes.NodeName) {
 					nodesToRetryLocal, err := vs.checkDiskAttached(ctx, nodes, nodeVolumes, localAttachedMap, retry)
 					if err != nil {
 						if !vclib.IsManagedObjectNotFoundError(err) {
@@ -1087,7 +1117,7 @@ func (vs *VSphere) DisksAreAttached(nodeVolumes map[k8stypes.NodeName][]string) 
 					nodesToRetry = append(nodesToRetry, nodesToRetryLocal...)
 					nodesToRetryMutex.Unlock()
 					wg.Done()
-				}()
+				}(nodeNames)
 				wg.Add(1)
 			}
 			wg.Wait()
@@ -1198,12 +1228,37 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 		}
 
 		var vmOptions *vclib.VMOptions
+		var zonesToSearch []string
+
+		if volumeOptions.SelectedNode != nil {
+			if len(volumeOptions.Zone) > 1 {
+				// In waitForFirstConsumer mode, if more than one allowedTopologies is specified, the volume should satisfy all these.
+				zonesToSearch = volumeOptions.Zone
+			} else {
+				// Pick the selectedNode's zone, if available.
+				nodeInfo, err := vs.nodeManager.GetNodeInfoWithNodeObject(volumeOptions.SelectedNode)
+				if err != nil {
+					klog.Errorf("Unable to get node information for %s. err: %+v", volumeOptions.SelectedNode.Name, err)
+					return "", err
+				}
+				klog.V(4).Infof("selectedNode info : %s", nodeInfo)
+				if nodeInfo.zone != nil && nodeInfo.zone.FailureDomain != "" {
+					zonesToSearch = append(zonesToSearch, nodeInfo.zone.FailureDomain)
+				}
+			}
+		} else {
+			// If no selectedNode, pick allowedTopologies, if provided.
+			zonesToSearch = volumeOptions.Zone
+		}
+		klog.V(1).Infof("Volume topology : %s", zonesToSearch)
+
 		if volumeOptions.VSANStorageProfileData != "" || volumeOptions.StoragePolicyName != "" {
 			// If datastore and zone are specified, first validate if the datastore is in the provided zone.
-			if len(volumeOptions.Zone) != 0 && volumeOptions.Datastore != "" {
-				klog.V(4).Infof("Specified zone : %s, datastore : %s", volumeOptions.Zone, volumeOptions.Datastore)
-				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, volumeOptions.Zone)
+			if len(zonesToSearch) != 0 && volumeOptions.Datastore != "" {
+				klog.V(4).Infof("Specified zone : %s, datastore : %s", zonesToSearch, volumeOptions.Datastore)
+				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, zonesToSearch)
 				if err != nil {
+					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", zonesToSearch, err)
 					return "", err
 				}
 
@@ -1215,7 +1270,7 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 					}
 				}
 				if !found {
-					err := fmt.Errorf("The specified datastore %s does not match the provided zones : %s", volumeOptions.Datastore, volumeOptions.Zone)
+					err := fmt.Errorf("The specified datastore %s does not match the provided zones : %s", volumeOptions.Datastore, zonesToSearch)
 					klog.Error(err)
 					return "", err
 				}
@@ -1234,25 +1289,19 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 			cleanUpRoutineInitLock.Unlock()
 		}
 		if volumeOptions.StoragePolicyName != "" && volumeOptions.Datastore == "" {
-			if len(volumeOptions.Zone) == 0 {
+			if len(zonesToSearch) == 0 {
 				klog.V(4).Infof("Selecting a shared datastore as per the storage policy %s", volumeOptions.StoragePolicyName)
 				datastoreInfo, err = getPbmCompatibleDatastore(ctx, vsi.conn.Client, volumeOptions.StoragePolicyName, vs.nodeManager)
 			} else {
 				// If zone is specified, first get the datastores in the zone.
-				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, volumeOptions.Zone)
+				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, zonesToSearch)
 
 				if err != nil {
-					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
-					return "", err
-				}
-				// If unable to get any datastore, fail the operation.
-				if len(dsList) == 0 {
-					err := fmt.Errorf("Failed to find a shared datastore matching zone %s", volumeOptions.Zone)
-					klog.Error(err)
+					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", zonesToSearch, err)
 					return "", err
 				}
 
-				klog.V(4).Infof("Specified zone : %s. Picking a datastore as per the storage policy %s among the zoned datastores : %s", volumeOptions.Zone,
+				klog.V(4).Infof("Specified zone : %s. Picking a datastore as per the storage policy %s among the zoned datastores : %s", zonesToSearch,
 					volumeOptions.StoragePolicyName, dsList)
 				// Among the compatible datastores, select the one based on the maximum free space.
 				datastoreInfo, err = getPbmCompatibleZonedDatastore(ctx, vsi.conn.Client, volumeOptions.StoragePolicyName, dsList)
@@ -1264,17 +1313,17 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 			klog.V(1).Infof("Datastore selected as per policy : %s", datastoreInfo.Info.Name)
 		} else {
 			// If zone is specified, pick the datastore in the zone with maximum free space within the zone.
-			if volumeOptions.Datastore == "" && len(volumeOptions.Zone) != 0 {
-				klog.V(4).Infof("Specified zone : %s", volumeOptions.Zone)
-				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, volumeOptions.Zone)
+			if volumeOptions.Datastore == "" && len(zonesToSearch) != 0 {
+				klog.V(4).Infof("Specified zone : %s", zonesToSearch)
+				dsList, err = getDatastoresForZone(ctx, vs.nodeManager, zonesToSearch)
 
 				if err != nil {
-					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
+					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", zonesToSearch, err)
 					return "", err
 				}
 				// If unable to get any datastore, fail the operation
 				if len(dsList) == 0 {
-					err := fmt.Errorf("Failed to find a shared datastore matching zone %s", volumeOptions.Zone)
+					err := fmt.Errorf("Failed to find a shared datastore matching zone %s", zonesToSearch)
 					klog.Error(err)
 					return "", err
 				}
@@ -1284,11 +1333,11 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 					klog.Errorf("Failed to get shared datastore: %+v", err)
 					return "", err
 				}
-				klog.V(1).Infof("Specified zone : %s. Selected datastore : %s", volumeOptions.Zone, datastoreInfo.Info.Name)
+				klog.V(1).Infof("Specified zone : %s. Selected datastore : %s", zonesToSearch, datastoreInfo.Info.Name)
 			} else {
 				var sharedDsList []*vclib.DatastoreInfo
 				var err error
-				if len(volumeOptions.Zone) == 0 {
+				if len(zonesToSearch) == 0 {
 					// If zone is not provided, get the shared datastore across all node VMs.
 					klog.V(4).Infof("Validating if datastore %s is shared across all node VMs", datastoreName)
 					sharedDsList, err = getSharedDatastoresInK8SCluster(ctx, vs.nodeManager)
@@ -1300,14 +1349,14 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 					err = fmt.Errorf("The specified datastore %s is not a shared datastore across node VMs", datastoreName)
 				} else {
 					// If zone is provided, get the shared datastores in that zone.
-					klog.V(4).Infof("Validating if datastore %s is in zone %s ", datastoreName, volumeOptions.Zone)
-					sharedDsList, err = getDatastoresForZone(ctx, vs.nodeManager, volumeOptions.Zone)
+					klog.V(4).Infof("Validating if datastore %s is in zone %s ", datastoreName, zonesToSearch)
+					sharedDsList, err = getDatastoresForZone(ctx, vs.nodeManager, zonesToSearch)
 					if err != nil {
-						klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
+						klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", zonesToSearch, err)
 						return "", err
 					}
 					// Prepare error msg to be used later, if required.
-					err = fmt.Errorf("The specified datastore %s does not match the provided zones : %s", datastoreName, volumeOptions.Zone)
+					err = fmt.Errorf("The specified datastore %s does not match the provided zones : %s", datastoreName, zonesToSearch)
 				}
 				found := false
 				// Check if the selected datastore belongs to the list of shared datastores computed.
@@ -1435,6 +1484,54 @@ func (vs *VSphere) NodeDeleted(obj interface{}) {
 	klog.V(4).Infof("Node deleted: %+v", node)
 	if err := vs.nodeManager.UnRegisterNode(node); err != nil {
 		klog.Errorf("failed to delete node %s: %v", node.Name, err)
+	}
+}
+
+// Notification handler when credentials secret is added.
+func (vs *VSphere) SecretAdded(obj interface{}) {
+	secret, ok := obj.(*v1.Secret)
+	if secret == nil || !ok {
+		klog.Warningf("Unrecognized secret object %T", obj)
+		return
+	}
+
+	if secret.Name != vs.cfg.Global.SecretName ||
+		secret.Namespace != vs.cfg.Global.SecretNamespace {
+		return
+	}
+
+	klog.V(4).Infof("secret added: %+v", obj)
+	vs.refreshNodesForSecretChange()
+}
+
+// Notification handler when credentials secret is updated.
+func (vs *VSphere) SecretUpdated(obj interface{}, newObj interface{}) {
+	oldSecret, ok := obj.(*v1.Secret)
+	if oldSecret == nil || !ok {
+		klog.Warningf("Unrecognized secret object %T", obj)
+		return
+	}
+
+	secret, ok := newObj.(*v1.Secret)
+	if secret == nil || !ok {
+		klog.Warningf("Unrecognized secret object %T", newObj)
+		return
+	}
+
+	if secret.Name != vs.cfg.Global.SecretName ||
+		secret.Namespace != vs.cfg.Global.SecretNamespace ||
+		reflect.DeepEqual(secret.Data, oldSecret.Data) {
+		return
+	}
+
+	klog.V(4).Infof("secret updated: %+v", newObj)
+	vs.refreshNodesForSecretChange()
+}
+
+func (vs *VSphere) refreshNodesForSecretChange() {
+	err := vs.nodeManager.refreshNodes()
+	if err != nil {
+		klog.Errorf("failed to rediscover nodes: %v", err)
 	}
 }
 
@@ -1619,6 +1716,10 @@ func (vs *VSphere) GetVolumeLabels(volumePath string) (map[string]string, error)
 		return nil, err
 	}
 	dsZones, err = vs.collapseZonesInRegion(ctx, dsZones)
+	if err != nil {
+		klog.Errorf("Failed to collapse zones. %v", err)
+		return nil, err
+	}
 	// FIXME: For now, pick the first zone of datastore as the zone of volume
 	labels := make(map[string]string)
 	if len(dsZones) > 0 {

@@ -6,9 +6,8 @@ go_library(
         "doc.go",
         "external.go",
         "golist.go",
-        "golist_fallback.go",
-        "golist_fallback_testmain.go",
         "golist_overlay.go",
+        "loadmode_string.go",
         "packages.go",
         "visit.go",
     ],
@@ -17,10 +16,11 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/golang.org/x/tools/go/gcexportdata:go_default_library",
-        "//vendor/golang.org/x/tools/go/internal/cgo:go_default_library",
         "//vendor/golang.org/x/tools/go/internal/packagesdriver:go_default_library",
-        "//vendor/golang.org/x/tools/internal/gopathwalk:go_default_library",
-        "//vendor/golang.org/x/tools/internal/semver:go_default_library",
+        "//vendor/golang.org/x/tools/internal/gocommand:go_default_library",
+        "//vendor/golang.org/x/tools/internal/packagesinternal:go_default_library",
+        "//vendor/golang.org/x/tools/internal/typesinternal:go_default_library",
+        "//vendor/golang.org/x/xerrors:go_default_library",
     ],
 )
 

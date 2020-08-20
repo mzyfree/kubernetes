@@ -24,9 +24,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	endpointsv1 "k8s.io/kubernetes/pkg/api/v1/endpoints"
 )
 
@@ -34,17 +33,17 @@ import (
 // masters. masterCountEndpointReconciler implements EndpointReconciler.
 type masterCountEndpointReconciler struct {
 	masterCount           int
-	endpointClient        corev1client.EndpointsGetter
+	epAdapter             EndpointsAdapter
 	stopReconcilingCalled bool
 	reconcilingLock       sync.Mutex
 }
 
 // NewMasterCountEndpointReconciler creates a new EndpointReconciler that reconciles based on a
 // specified expected number of masters.
-func NewMasterCountEndpointReconciler(masterCount int, endpointClient corev1client.EndpointsGetter) EndpointReconciler {
+func NewMasterCountEndpointReconciler(masterCount int, epAdapter EndpointsAdapter) EndpointReconciler {
 	return &masterCountEndpointReconciler{
-		masterCount:    masterCount,
-		endpointClient: endpointClient,
+		masterCount: masterCount,
+		epAdapter:   epAdapter,
 	}
 }
 
@@ -68,7 +67,7 @@ func (r *masterCountEndpointReconciler) ReconcileEndpoints(serviceName string, i
 		return nil
 	}
 
-	e, err := r.endpointClient.Endpoints(metav1.NamespaceDefault).Get(serviceName, metav1.GetOptions{})
+	e, err := r.epAdapter.Get(metav1.NamespaceDefault, serviceName, metav1.GetOptions{})
 	if err != nil {
 		e = &corev1.Endpoints{
 			ObjectMeta: metav1.ObjectMeta{
@@ -77,13 +76,18 @@ func (r *masterCountEndpointReconciler) ReconcileEndpoints(serviceName string, i
 			},
 		}
 	}
+
+	// Don't use the EndpointSliceMirroring controller to mirror this to
+	// EndpointSlices. This may change in the future.
+	skipMirrorChanged := setSkipMirrorTrue(e)
+
 	if errors.IsNotFound(err) {
 		// Simply create non-existing endpoints for the service.
 		e.Subsets = []corev1.EndpointSubset{{
 			Addresses: []corev1.EndpointAddress{{IP: ip.String()}},
 			Ports:     endpointPorts,
 		}}
-		_, err = r.endpointClient.Endpoints(metav1.NamespaceDefault).Create(e)
+		_, err = r.epAdapter.Create(metav1.NamespaceDefault, e)
 		return err
 	}
 
@@ -97,11 +101,12 @@ func (r *masterCountEndpointReconciler) ReconcileEndpoints(serviceName string, i
 			Ports:     endpointPorts,
 		}}
 		klog.Warningf("Resetting endpoints for master service %q to %#v", serviceName, e)
-		_, err = r.endpointClient.Endpoints(metav1.NamespaceDefault).Update(e)
+		_, err = r.epAdapter.Update(metav1.NamespaceDefault, e)
 		return err
 	}
-	if ipCorrect && portsCorrect {
-		return nil
+
+	if !skipMirrorChanged && ipCorrect && portsCorrect {
+		return r.epAdapter.EnsureEndpointSliceFromEndpoints(metav1.NamespaceDefault, e)
 	}
 	if !ipCorrect {
 		// We *always* add our own IP address.
@@ -133,7 +138,7 @@ func (r *masterCountEndpointReconciler) ReconcileEndpoints(serviceName string, i
 		e.Subsets[0].Ports = endpointPorts
 	}
 	klog.Warningf("Resetting endpoints for master service %q to %v", serviceName, e)
-	_, err = r.endpointClient.Endpoints(metav1.NamespaceDefault).Update(e)
+	_, err = r.epAdapter.Update(metav1.NamespaceDefault, e)
 	return err
 }
 
@@ -141,7 +146,7 @@ func (r *masterCountEndpointReconciler) RemoveEndpoints(serviceName string, ip n
 	r.reconcilingLock.Lock()
 	defer r.reconcilingLock.Unlock()
 
-	e, err := r.endpointClient.Endpoints(metav1.NamespaceDefault).Get(serviceName, metav1.GetOptions{})
+	e, err := r.epAdapter.Get(metav1.NamespaceDefault, serviceName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Endpoint doesn't exist
@@ -150,6 +155,10 @@ func (r *masterCountEndpointReconciler) RemoveEndpoints(serviceName string, ip n
 		return err
 	}
 
+	if len(e.Subsets) == 0 {
+		// no action is needed to remove the endpoint
+		return nil
+	}
 	// Remove our IP from the list of addresses
 	new := []corev1.EndpointAddress{}
 	for _, addr := range e.Subsets[0].Addresses {
@@ -160,7 +169,7 @@ func (r *masterCountEndpointReconciler) RemoveEndpoints(serviceName string, ip n
 	e.Subsets[0].Addresses = new
 	e.Subsets = endpointsv1.RepackSubsets(e.Subsets)
 	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		_, err := r.endpointClient.Endpoints(metav1.NamespaceDefault).Update(e)
+		_, err := r.epAdapter.Update(metav1.NamespaceDefault, e)
 		return err
 	})
 	return err

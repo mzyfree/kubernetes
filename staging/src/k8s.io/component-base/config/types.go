@@ -62,6 +62,12 @@ type LeaderElectionConfiguration struct {
 	// resourceLock indicates the resource object type that will be used to lock
 	// during leader election cycles.
 	ResourceLock string
+	// resourceName indicates the name of resource object that will be used to lock
+	// during leader election cycles.
+	ResourceName string
+	// resourceName indicates the namespace of resource object that will be used to lock
+	// during leader election cycles.
+	ResourceNamespace string
 }
 
 // DebuggingConfiguration holds configuration for Debugging related features.
@@ -71,4 +77,12 @@ type DebuggingConfiguration struct {
 	// enableContentionProfiling enables lock contention profiling, if
 	// enableProfiling is true.
 	EnableContentionProfiling bool
+}
+
+// LoggingConfiguration contains logging options
+type LoggingConfiguration struct {
+	// Format Flag specifies the structure of log messages.
+	// default value of format is `text`
+	// Refer [Logs Options](https://github.com/kubernetes/component-base/blob/master/logs/options.go) for more information.
+	Format string
 }
